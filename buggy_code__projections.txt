@@ -1,0 +1,163 @@
+# Buggy bits of code
+# Written for projection operators
+# might still work with some care
+
+from projectq.ops._basics import (BasicGate,
+                      ClassicalInstructionGate,
+                      FastForwardingGate)  
+                                            # for projectors and other custom matrices
+
+# rank-1 projections |i><i| as matrices
+# following the pattern in projectq/ops/_gates.py
+# __there are probably better ways to do this__
+# used in qudit-controlled unitary operations
+
+class Projection(BasicGate):
+    """ Projection operator class """
+    def __str__(self):
+        return "Projection"
+     
+     
+    # constructor for rank-1 projector 
+    # dim-qubit operator, projects onto int(reg) = index
+    def __init__(self, dim, index):
+        size = pow(2, dim)
+        if (index >= size):
+            print("index out of bounds, throwing exception...")
+            return None
+        a = np.zeros(size)
+        a[index]=1
+        self.matrix = np.outer(a, a)
+        self.interchangeable_qubit_indices = []
+
+        # providing a decomposition seems to be an important
+        # part of defining a gate class
+        # provide one possible decomposition :
+        register_decomposition(Projection, projection_decomposition1)
+        # however this throws a 'name not defined' error
+
+        
+class Unitary(BasicGate):
+    """ Arbitrary Unitary operator class """
+    def __str__(self):
+        return "User defined unitary"
+     
+     
+    # constructor for unitary written as \sum_i |i><i|\otimes U_i 
+    def __init__(self, matrix):
+        self.matrix = matrix
+        self.interchangeable_qubit_indices = []
+
+
+def projector(dim, index):
+        size = pow(2, dim)
+        if (index >= size):
+            print("index out of bounds, throwing exception...")
+            return None
+        a = np.zeros(size)
+        a[index]=1
+        matrix = np.outer(a, a)
+        return matrix
+
+# the LCU 'V' map that prepares the control state
+# take the list of 'm' coefts as input
+# return the ceil(\log m) qubit register as output
+
+def lcu_control_state_prep(eng, coefts, reg, dim):
+    m = len(coefts)
+    # dim = math.ceil(math.log(m,2)) 
+    
+    size = pow(2, dim)
+    
+    weight = np.sum(coefts)
+    probs = np.zeros(size)
+    probs[0:m] = coefts
+    probs = (1.0/weight) * probs 
+    # print("prob vec: {}".format(probs))
+    
+    # compute the rotation angles required for preparing
+    # the LCU control state, apply conditional rotations
+    # following the method of Grover & Rudolph (2002)
+    
+    # we need to perform bifurcations over dim rounds
+    
+    for i in range(1,dim+1):
+        block_size = 2**(dim-i+1)
+        # print("block_size: {}".format(block_size))
+               
+        # in each round, need to bifurcate 2^(round - 1) blocks
+        num_blocks = 2**(i-1)
+#        print("num_blocks: {}".format(num_blocks))
+        target = np.zeros((2**i, 2**i))
+        for j in range(0, num_blocks):
+            # break loop if we've already crossed the last non-zero coefficient
+            if (j*block_size > m-1):
+                print("Broke from j={} because we crossed the last element\n".format(int(j)))
+                break
+            
+            start = j*block_size
+            end = start + block_size
+#            print("start: {}, end: {}".format(int(start),int(end)))
+            
+            vec_j = probs[start : end]
+#            print("block to be bifurcated: {}".format(vec_j))
+            # break loop if singleton
+            if (len(vec_j)<=1):
+                print("Broke from j={} because we encountered a singleton\n".format(int(j)))
+                break
+            
+            left_cond_prob_j = bifurcate(vec_j)
+            # print("left cond prob of vec_j: {}".format(left_cond_prob_j))
+            
+            # perform a rotation with angle corresponding to sqrt of this prob
+            f_j = math.sqrt(left_cond_prob_j)
+            ang_j = math.acos(f_j)
+
+
+            proj_j = projector(i-1, j)
+            print("proj_{}{} is : \n{}\n".format(int(i), int(j), proj_j))
+            
+            # remember Ry takes argument 2x and rotates through angle x
+            rot = Ry(2*ang_j).matrix
+            
+            temp = np.kron(proj_j, rot)
+            target = np.add(target, temp)
+            print("update to rotation matrix at bifurcation {} is : \n{}\n".format(int(j), temp))
+      
+          net_rotation = Unitary(target)
+          print("rotation matrix at iteration {} is: \n{}\n".format(int(i), net_rotation.matrix))
+          net_rotation | reg[0:i]
+      
+	# careful with eng.flushes inside functions
+	# THEY CAN ACTUALLY CAUSE OTHERWISE PROPER CODE---
+	# ---TO MALFUNCTION
+
+        eng.flush()
+        print("at iteration {}, we have the state \n".format(int(i)))
+        print(eng.backend.cheat())
+    
+    return reg
+
+
+# the following function takes a list of unitaries
+# and converts them into 
+# the controlled unitary \sum_i |i><i| \otimes U_i
+# used in the LCU implementation
+
+def lcu_controlled_unitary(list_of_U):
+    size = len(list_of_U) 
+    system_size = len(list_of_U[0].matrix[:,1])              # for square matrices, this hack works
+    control_dim = math.ceil(math.log(size, 2))
+    mat_dim = 2**control_dim * system_size
+    
+    target = np.zeros((mat_dim,mat_dim))
+    for i in range (0,size):
+        proj_i = projector(control_dim, i)
+        sysmat = np.asmatrix(list_of_U[i].matrix)
+        temp = np.kron(proj_i, sysmat)
+        target = np.add(target, temp)
+      
+    U = Unitary(target)
+    return U
+
+
