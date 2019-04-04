@@ -72,7 +72,7 @@ def test_hadamard2(eng, rounds=1, oaa_rounds=0, fpoaa_depth=0):
             t = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
             theory_prob = 1 - pow(1-t, pow(3, fpoaa_depth))
         
-            lcu_fpoaa(eng, A, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
+            lcu(eng, A, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
     
             prob = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
             print("lcu success prob after FPOAA({}) = {}\n".format(int(fpoaa_depth), float(prob)))
@@ -152,7 +152,7 @@ def test_controlled_phase_12(eng, oaa_rounds = 0, fpoaa_depth = 0):
         t = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
         theory_prob = 1 - pow(1-t, pow(3, fpoaa_depth))
         
-        lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
+        lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
         
         prob = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
         print("lcu success prob after FPOAA({}) = {}\n".format(int(fpoaa_depth), float(prob)))
@@ -222,7 +222,7 @@ def test_CCS(eng, t, oaa_rounds = 0, fpoaa_depth = 0):
         temp = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
         theory_prob = float(1 - pow(1-temp, pow(3, fpoaa_depth)))
         
-        lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
+        lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
         
         practice_prob = lcu_success_prob(eng, ctrl+sys, sys_dim, dim)
 #         print("lcu success prob after FPOAA({}) = {}\n".format(int(fpoaa_depth), float(practice_prob)))
@@ -249,3 +249,52 @@ def test_CCS(eng, t, oaa_rounds = 0, fpoaa_depth = 0):
     
     return theory_prob, practice_prob
 
+if __name__ == "__main__":
+    eng = MainEngine()
+#     test_controlled_phase_12(eng,0,10)
+    
+    prob_theory=[]
+    prob_prac=[]
+    for j, amp in enumerate(np.linspace(-0.5,0.5,21,endpoint=True)):
+        print("\n*** For cluster amplitude = {} ***".format(float(amp)))
+        fpoaa_min = 0
+        fpoaa_max = 7
+        probs = []
+        for i in range(fpoaa_min, fpoaa_max):
+            probs.append(test_CCS(eng, amp, 0, i))
+    
+        pt, pp = zip(*probs)
+        prob_theory.append(pt)
+        prob_prac.append(pp)
+#         print("probability discrepancy as a function of #rounds of fpoaa:\n")
+#         delta_prob = np.subtract(prob_theory,prob_prac)
+#         print(delta_prob)
+        print("practically achieved success probability as a function of #rounds of fpoaa:\n")
+#        print(range(fpoaa_min, fpoaa_max))
+        print(prob_prac[j])
+#        print(prob_theory)
+
+prob_as_fn_of_amps = list(zip(*prob_prac))       # transposing the list of lists
+for i in range(len(prob_as_fn_of_amps)):
+    plt.plot(np.linspace(-0.5,0.5,21,endpoint=True), prob_as_fn_of_amps[i], label = 'fpoaa_depth %s'%i)
+plt.xlabel("cluster amplitude")
+plt.ylabel("success probability")
+plt.legend(loc='best')
+plt.show()
+
+# plt.plot(range(4,test_fpoaa),prob_theory,'r-',range(4,test_fpoaa),prob_prac,'bo')
+# plt.show()
+
+for i, amp in enumerate(np.linspace(-0.5,0.5,21,endpoint=True)):
+    plt.plot(range(fpoaa_min,fpoaa_max), prob_prac[i], label = 'amplitude %s'%amp)
+plt.xlabel("fpoaa depth")
+plt.ylabel("success probability")
+plt.legend(loc='best')
+plt.show()
+
+
+amps_0 = np.loadtxt("CCS_amp_0.0_data.txt", dtype=complex)
+target = np.ones(len(amps_0),dtype=complex)
+diff_state = np.subtract(amps_0,target)
+err_0 = np.absolute(diff_state)
+print(err_0)
