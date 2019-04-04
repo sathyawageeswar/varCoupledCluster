@@ -131,6 +131,8 @@ def bifurcate(vec):
 
 def lcu_controlled_unitary(eng, list_of_U, coefts, ctrl, sys, sys_dim):
     size = len(list_of_U)
+    if not size:
+        print('Error in lcu - I got an empty list of unitaries!')
     ctrl_dim = math.ceil(math.log(size, 2))
     
     for i in range(0,size):
@@ -143,7 +145,7 @@ def lcu_controlled_unitary(eng, list_of_U, coefts, ctrl, sys, sys_dim):
                     X | ctrl[j]
         
         # if unitaries passed are qubitoperator, directly apply them, no unpacking required
-        if isinstance(list_of_U[1], QubitOperator):
+        if isinstance(list_of_U[0], QubitOperator):
             with Control(eng, ctrl):
                 list_of_U[i] | sys
             Uncompute(eng)       
@@ -161,8 +163,14 @@ def lcu_controlled_unitary(eng, list_of_U, coefts, ctrl, sys, sys_dim):
                         continue
                     list_of_U[i][j] | sys[j]
             Uncompute(eng)
-        
-def lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim):
+            
+def lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth = 0):
+        if fpoaa_depth:
+            lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
+        else:
+            lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+
+def lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim):
         with Compute(eng):
             lcu_control_state_prep(eng, coefts, ctrl, ctrl_dim)
         lcu_controlled_unitary(eng, list_of_unitaries, coefts, ctrl, sys, sys_dim)
@@ -202,7 +210,7 @@ def lcu_oaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, rounds
     for i in range(0, rounds):
         cond_phase(eng, ctrl, sys, phi)
         with Dagger(eng):
-            lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+            lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
         size = pow(2, ctrl_dim)
         for l in range(1,size):                # -R flips sign of everything except 00..0
             temp = np.binary_repr(i)
@@ -214,7 +222,7 @@ def lcu_oaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, rounds
         with Control(eng, ctrl):
             Ph(phi) | sys[0]                   # flip sign using any one sys qubit
         Uncompute(eng)
-        lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+        lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
         print("Amplitudes of ctrl+sys state after {} rounds of OAA:\n".format(int(i)+1))
         print_amplitudes(eng, ctrl+sys, ctrl_dim+sys_dim)
 
@@ -230,10 +238,10 @@ def lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, dept
     # which has already been applied above in the lcu step
     for i in range(1,t):
         if (gate_seq[t-1-i]=='W'):
-            lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+            lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
         elif (gate_seq[t-1-i]=='M'):
             with Dagger(eng):
-                lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+                lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
         elif (gate_seq[t-1-i]=='R'):
             cond_phase(eng, ctrl, sys, phi)
         elif (gate_seq[t-1-i]=='S'):
@@ -309,4 +317,4 @@ def print_mmt_output(reg, dim):
     All(measure) | reg
     for i in range(0,dim):
         print("{}".format(int(reg[dim-1-i])), end=' ')
-
+        
