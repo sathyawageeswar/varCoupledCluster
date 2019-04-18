@@ -9,6 +9,7 @@
 
 import numpy as np                          # for rank_1_projector and other custom matrices
 import math
+from sys import getrecursionlimit           # to get max recursion depth for fpoaa
 import matplotlib.pyplot as plt
 from collections import Counter
 
@@ -33,7 +34,7 @@ class IdGate(SelfInverseGate):
     
     @property
     def matrix(self):
-        return np.matrix([1, 0], [0,1])
+        return np.matrix([[1, 0], [0,1]])
     
 #: Shortcut (instance of) :class:`IdGate`
 I = Id = IdGate()
@@ -165,10 +166,13 @@ def lcu_controlled_unitary(eng, list_of_U, coefts, ctrl, sys, sys_dim):
             Uncompute(eng)
             
 def lcu(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth = 0):
-        if fpoaa_depth:
-            lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
-        else:
-            lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
+    cutoff = getrecursionlimit()
+    if fpoaa_depth > cutoff:
+        fpoaa_depth = cutoff - 1
+    if fpoaa_depth:
+        lcu_fpoaa(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim, fpoaa_depth)
+    else:
+        lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim)
 
 def lcu_basic(eng, list_of_unitaries, coefts, ctrl, sys, ctrl_dim, sys_dim):
         with Compute(eng):
@@ -306,7 +310,8 @@ def print_probabilities(eng, reg, dim):
         bin_i = np.binary_repr(i)
         bin_i = bin_i.zfill(dim)        # padding with zeros to get fixed length bin
         temp = eng.backend.get_probability(bin_i, reg)
-        print("\t{} (={}) is {}".format(bin_i, int(i), temp))
+        if (temp!=0):
+            print("\t{} (={}) is {}".format(bin_i, int(i), temp))
 
 
 # print output string after measurement
